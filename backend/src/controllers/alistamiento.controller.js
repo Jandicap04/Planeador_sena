@@ -1,66 +1,56 @@
-import { enviarCorreoAlertaPendiente, enviarCorreoFinalizacion } from '../services/correo.service.js';
-import { obtenerProgramacionFinalizarPorId } from '../services/programacion.service.js';
+import { enviarCorreoAlertaPendiente } from '../services/correo.service.js';
 
-export const finalizarAlistamiento = async (req, res) => {
-  const idProgramacion = Number(req.body?.id_programacion);
-
-  if (!idProgramacion) {
-    return res.status(400).json({ ok: false, error: 'Debes enviar id_programacion.' });
+const normalizarAdjuntos = (adjuntos) => {
+  if (!Array.isArray(adjuntos)) {
+    return [];
   }
 
-  try {
-    const programacion = await obtenerProgramacionFinalizarPorId(idProgramacion);
-    const instructor = programacion.instructor || null;
-    const programa = programacion.programa || null;
-
-    if (!instructor?.correo_electronico) {
-      return res.status(404).json({ ok: false, error: 'No se encontro correo del instructor.' });
-    }
-
-    const result = await enviarCorreoFinalizacion({
-      to: instructor.correo_electronico,
-      payload: {
-        instructorNombre: instructor.nombre_completo || instructor.nombre || 'Instructor',
-        programaNombre: programa?.nombre_programa || 'Programa',
-        horasAsignadas: programacion.horas_asignadas,
-        fechaLimite: programacion.fecha_limite,
-      },
-    });
-
-    return res.json({ ok: true, messageId: result.messageId, id_programacion: idProgramacion });
-  } catch (error) {
-    return res.status(500).json({ ok: false, error: error.message || 'No se pudo finalizar el alistamiento.' });
-  }
+  return adjuntos
+    .filter((adjunto) => adjunto?.fileName && adjunto?.contentBase64)
+    .map((adjunto) => ({
+      filename: String(adjunto.fileName),
+      contentType: String(adjunto.mimeType || 'application/octet-stream'),
+      content: Buffer.from(String(adjunto.contentBase64), 'base64'),
+    }));
 };
 
 export const enviarAlertaPendiente = async (req, res) => {
-  const idProgramacion = Number(req.body?.id_programacion);
-
-  if (!idProgramacion) {
-    return res.status(400).json({ ok: false, error: 'Debes enviar id_programacion.' });
-  }
-
   try {
-    const programacion = await obtenerProgramacionFinalizarPorId(idProgramacion);
-    const instructor = programacion.instructor || null;
-    const programa = programacion.programa || null;
+    const instructor = req.body?.instructor;
+    const destinatario = req.body?.destinatario || req.body?.receptor || req.body?.correoDestino || instructor?.correoElectronico;
+    const destinatarios = Array.isArray(destinatario)
+      ? destinatario.filter(Boolean)
+      : String(destinatario || '').trim();
 
-    if (!instructor?.correo_electronico) {
-      return res.status(404).json({ ok: false, error: 'No se encontro correo del instructor.' });
+    if (!destinatarios || (Array.isArray(destinatarios) && destinatarios.length === 0)) {
+      return res.status(400).json({ ok: false, error: 'Debes enviar un destinatario válido para el correo.' });
     }
 
+    const attachments = normalizarAdjuntos(req.body?.adjuntos);
+
     const result = await enviarCorreoAlertaPendiente({
-      to: instructor.correo_electronico,
+      to: destinatarios,
       payload: {
-        instructorNombre: instructor.nombre_completo || instructor.nombre || 'Instructor',
-        programaNombre: programa?.nombre_programa || 'Programa',
-        horasAsignadas: programacion.horas_asignadas,
-        fechaLimite: programacion.fecha_limite,
+        instructorNombre: instructor?.nombreCompleto || 'Instructor',
+        destinatarioNombre: req.body?.destinatarioNombre || 'Coordinador',
+        programaNombre: req.body?.programa?.nombre || 'Programa',
+        horasAsignadas: req.body?.horasProgramadas ?? req.body?.horasObjetivo ?? 'No definido',
+        horasObjetivo: req.body?.horasObjetivo ?? req.body?.horasProgramadas ?? 'No definido',
+        fechaLimite: req.body?.semana?.fin || 'No definida',
+        semana: req.body?.semana,
+        eventos: Array.isArray(req.body?.eventos) ? req.body.eventos : [],
+        adjuntos: attachments,
       },
+      attachments,
     });
 
-    return res.json({ ok: true, messageId: result.messageId, id_programacion: idProgramacion });
+    return res.json({
+      ok: true,
+      messageId: result.messageId,
+      to: destinatarios,
+      attachments: attachments.length,
+    });
   } catch (error) {
-    return res.status(500).json({ ok: false, error: error.message || 'No se pudo enviar la alerta.' });
+    return res.status(500).json({ ok: false, error: error.message || 'No se pudo enviar el recordatorio.' });
   }
 };

@@ -38,10 +38,12 @@ const construirSemana = (eventos) => {
 
 export const enviarVerificacionAlistamiento = async ({
   instructor,
+  destinatario,
+  destinatarioNombre,
+  programaNombre,
   horasProgramadas,
   horasObjetivo,
   eventos,
-  asunto,
   adjuntos,
 }) => {
   if (!API_BASE_URL) {
@@ -68,10 +70,13 @@ export const enviarVerificacionAlistamiento = async ({
       },
       body: JSON.stringify({
         instructor,
+        destinatario,
+        destinatarioNombre,
+        programa: { nombre: programaNombre || 'Programa' },
         semana: construirSemana(eventos),
         horasProgramadas,
         horasObjetivo,
-        asunto,
+        eventos,
         adjuntos: adjuntosSerializados,
       }),
     });

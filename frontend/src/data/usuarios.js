@@ -38,7 +38,8 @@ export const usuarios = [
     rol: "instructor",
     nombre: "JORGE ANDRES ESCOBAR GONZALEZ",
     usuario: "JORGE ESCOBAR",
-    password: "3011"
+    password: "3011",
+    email: "jandicap04@gmail.com"
   },
   {
     id: 6,

@@ -23,6 +23,7 @@ function Planeador() {
   const [eventosPlaneador, setEventosPlaneador] = useState([]);
   const [excelDescargado, setExcelDescargado] = useState(false);
   const [personasInscritas, setPersonasInscritas] = useState([]);
+  const [planoAprendicesData, setPlanoAprendicesData] = useState(null);
   const [pdfDocumentosIdentidad, setPdfDocumentosIdentidad] = useState(null);
   const [pdfNombreDocumentos, setPdfNombreDocumentos] = useState('');
   const [adjuntosCorreo, setAdjuntosCorreo] = useState([]);
@@ -289,6 +290,25 @@ function Planeador() {
 
   const formatearCompetencia = (competencia) => `${competencia.codigo_competencia} - ${competencia.denominacion_competencia}`;
 
+  const resolverDestinatarioCorreo = (usuarioLogueado = usuario, usuarioCatalogo = null) => {
+    const rol = String(usuarioLogueado?.rol || usuarioCatalogo?.rol || '').trim().toLowerCase();
+    const correoUsuario = usuarioLogueado?.email || usuarioLogueado?.correo_electronico || usuarioCatalogo?.email || '';
+
+    if (correoUsuario) {
+      return correoUsuario;
+    }
+
+    if (rol === 'coordinador') {
+      return 'coordinacion@sena.edu.co';
+    }
+
+    if (rol === 'administrativo') {
+      return 'administrativos@sena.edu.co';
+    }
+
+    return 'coordinacion@sena.edu.co';
+  };
+
   const generarArchivosPlaneador = () => {
     const datosExcel = eventosPlaneador.map(ev => {
       const fecha = new Date(ev.start).toISOString().split('T')[0];
@@ -316,60 +336,91 @@ function Planeador() {
     XLSX.utils.book_append_sheet(wbPlaneador, wsPlaneador, 'Planeador');
     const bufferPlaneador = XLSX.write(wbPlaneador, { bookType: 'xlsx', type: 'array' });
 
-    const datosAprendices = personasInscritas && personasInscritas.length > 0
-      ? personasInscritas.map(persona => ({
-          'Resultado del Registro (Reservado para el sistema)': '',
-          'Tipo de Identificación': String(persona.tipoIdentificacion || '').replace(/[.\s]+/g, '').toUpperCase(),
-          'Numero de Identificación': String(persona.numeroIdentificacion || '').replace(/\D/g, ''),
-          'Código de la ficha': '',
-          'Tipo Población Aspirante': String(persona.tipoObligatorio || '').trim().replace(/\s+/g, ' '),
-          'Tipo de Organización': '',
-          'Codigo Empresa (Solo si la ficha es cerrada)': '',
-        }))
-      : Array.from({ length: 1 }, () => ({
-          'Resultado del Registro (Reservado para el sistema)': '',
-          'Tipo de Identificación': '',
-          'Numero de Identificación': '',
-          'Código de la ficha': '',
-          'Tipo Población Aspirante': '',
-          'Tipo de Organización': '',
-          'Codigo Empresa (Solo si la ficha es cerrada)': '',
-        }));
+    const normalizarValorPlano = (valor) => String(valor ?? '').trim().replace(/[.,;:]/g, '').replace(/\s+/g, ' ');
+    const normalizarIdentificacionPlano = (valor) => String(valor ?? '').replace(/[.\s]+/g, '').toUpperCase();
+    const normalizarNumeroIdentificacionPlano = (valor) => String(valor ?? '').replace(/\D/g, '');
+    const normalizarPoblacionPlano = (valor) => String(valor ?? '').trim().replace(/[.,;:]/g, '').replace(/\s+/g, ' ');
 
-    const headersPlano = [
-      'Resultado del Registro (Reservado para el sistema)',
-      'Tipo de Identificación',
-      'Numero de Identificación',
-      'Código de la ficha',
-      'Tipo Población Aspirante',
-      'Tipo de Organización',
-      'Codigo Empresa (Solo si la ficha es cerrada)',
-    ];
+    let datosAprendices = [];
+    let headersPlano = [];
+    let sheetNameAprendices = 'Aprendices';
 
-    const wsAprendices = XLSX.utils.aoa_to_sheet([
-      ['FORMATO PARA LA INSCRIPCION DE ASPIRANTES EN SOFIA PLUS v1.0'],
-      headersPlano,
-    ]);
+    if (planoAprendicesData?.filas?.length > 0 && Array.isArray(planoAprendicesData.headers)) {
+      headersPlano = planoAprendicesData.headers;
+      sheetNameAprendices = planoAprendicesData.sheetName || 'Aprendices';
 
-    XLSX.utils.sheet_add_json(wsAprendices, datosAprendices, {
-      header: headersPlano,
-      skipHeader: true,
-      origin: 'A3',
-    });
+      datosAprendices = planoAprendicesData.filas.map((fila) => {
+        const filaLimpia = { ...fila };
+        const colTipoIdentificacion = planoAprendicesData.columnas?.tipoIdentificacion;
+        const colNumeroIdentificacion = planoAprendicesData.columnas?.numeroIdentificacion;
+        const colTipoPoblacion = planoAprendicesData.columnas?.tipoPoblacion;
 
-    wsAprendices['!merges'] = [XLSX.utils.decode_range('A1:G1')];
-    wsAprendices['!cols'] = [
-      { wch: 38 },
-      { wch: 24 },
-      { wch: 24 },
-      { wch: 20 },
-      { wch: 30 },
-      { wch: 24 },
-      { wch: 34 },
-    ];
+        if (colTipoIdentificacion && filaLimpia[colTipoIdentificacion] !== undefined) {
+          filaLimpia[colTipoIdentificacion] = normalizarIdentificacionPlano(filaLimpia[colTipoIdentificacion]);
+        }
+
+        if (colNumeroIdentificacion && filaLimpia[colNumeroIdentificacion] !== undefined) {
+          filaLimpia[colNumeroIdentificacion] = normalizarNumeroIdentificacionPlano(filaLimpia[colNumeroIdentificacion]);
+        }
+
+        if (colTipoPoblacion && filaLimpia[colTipoPoblacion] !== undefined) {
+          filaLimpia[colTipoPoblacion] = normalizarPoblacionPlano(filaLimpia[colTipoPoblacion]);
+        }
+
+        return filaLimpia;
+      });
+    } else if (personasInscritas && personasInscritas.length > 0) {
+      datosAprendices = personasInscritas.map(persona => ({
+        'Resultado del Registro (Reservado para el sistema)': '',
+        'Tipo de Identificación': normalizarIdentificacionPlano(persona.tipoIdentificacion),
+        'Numero de Identificación': normalizarNumeroIdentificacionPlano(persona.numeroIdentificacion),
+        'Código de la ficha': '',
+        'Tipo Población Aspirante': normalizarValorPlano(persona.tipoObligatorio),
+        'Tipo de Organización': '',
+        'Codigo Empresa (Solo si la ficha es cerrada)': '',
+      }));
+
+      headersPlano = [
+        'Resultado del Registro (Reservado para el sistema)',
+        'Tipo de Identificación',
+        'Numero de Identificación',
+        'Código de la ficha',
+        'Tipo Población Aspirante',
+        'Tipo de Organización',
+        'Codigo Empresa (Solo si la ficha es cerrada)',
+      ];
+    } else {
+      datosAprendices = Array.from({ length: 1 }, () => ({
+        'Resultado del Registro (Reservado para el sistema)': '',
+        'Tipo de Identificación': '',
+        'Numero de Identificación': '',
+        'Código de la ficha': '',
+        'Tipo Población Aspirante': '',
+        'Tipo de Organización': '',
+        'Codigo Empresa (Solo si la ficha es cerrada)': '',
+      }));
+
+      headersPlano = [
+        'Resultado del Registro (Reservado para el sistema)',
+        'Tipo de Identificación',
+        'Numero de Identificación',
+        'Código de la ficha',
+        'Tipo Población Aspirante',
+        'Tipo de Organización',
+        'Codigo Empresa (Solo si la ficha es cerrada)',
+      ];
+    }
+
+    const wsAprendices = XLSX.utils.aoa_to_sheet(
+      headersPlano.length > 0
+        ? [headersPlano, ...datosAprendices.map((fila) => headersPlano.map((header) => fila[header] ?? ''))]
+        : []
+    );
+
+    wsAprendices['!cols'] = headersPlano.map(() => ({ wch: 24 }));
 
     const wbAprendices = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wbAprendices, wsAprendices, 'Aprendices');
+    XLSX.utils.book_append_sheet(wbAprendices, wsAprendices, sheetNameAprendices || 'Aprendices');
     const bufferAprendices = XLSX.write(wbAprendices, { bookType: 'xlsx', type: 'array' });
 
     const nombreInstructor = usuario?.nombre || 'Instructor';
@@ -577,14 +628,12 @@ function Planeador() {
 
     let estadoCorreo = '';
 
-    const usuarioRelacionado = (usuarios || []).find((u) => {
-      const coincideId = String(u?.id ?? '') === String(usuario?.id ?? '');
-      const coincideUsuario = normalizarTexto(u?.usuario) === normalizarTexto(usuario?.usuario);
-      const coincideNombre = normalizarTexto(u?.nombre) === normalizarTexto(usuario?.nombre);
-      return coincideId || coincideUsuario || coincideNombre;
-    });
+    const usuarioRelacionado = (usuarios || []).find(
+      (u) => String(u?.id ?? '') === String(usuario?.id ?? '')
+    );
 
-    const correoDestino = usuario?.email || usuario?.correo_electronico || usuarioRelacionado?.email || '';
+    const correoDestino = resolverDestinatarioCorreo(usuario, usuarioRelacionado);
+    const nombreDestinatario = usuario?.nombre || usuario?.usuario || 'Coordinador';
 
     if (correoDestino && !usuario?.email) {
       localStorage.setItem(
@@ -598,39 +647,22 @@ function Planeador() {
 
     if (correoDestino) {
       try {
-        const adjuntosParaCorreo = adjuntosCorreo.length > 0
-          ? adjuntosCorreo
-          : (() => {
-              const archivos = generarArchivosPlaneador();
-              return [
-                {
-                  fileName: archivos.nombrePlaneador,
-                  mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                  arrayBuffer: archivos.bufferPlaneador,
-                },
-                {
-                  fileName: archivos.nombreAprendices,
-                  mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                  arrayBuffer: archivos.bufferAprendices,
-                },
-                {
-                  fileName: archivos.nombreDocumentos,
-                  mimeType: 'application/pdf',
-                  arrayBuffer: archivos.bufferDocumentos,
-                },
-              ];
-            })();
+        if (adjuntosCorreo.length === 0) {
+          throw new Error('Debes descargar primero los archivos del planeador para adjuntarlos al correo.');
+        }
 
         const resultadoCorreo = await enviarVerificacionAlistamiento({
           instructor: {
             nombreCompleto: usuario.nombre || usuario.usuario || 'Instructor',
             correoElectronico: correoDestino,
           },
+          destinatario: correoDestino,
+          destinatarioNombre: nombreDestinatario,
+          programaNombre: nuevoEvento.programaNombre || nuevoEvento.programa,
           horasProgramadas,
           horasObjetivo: Number(nuevoEvento.horasPrograma || 0),
           eventos: eventosPlaneador,
-          asunto: 'Recuerda esto es lo que programaste en este mes o semana para que estes pendiente y si es el caso actualices tu cronograma y asi puedas estar al dia y atento.',
-          adjuntos: adjuntosParaCorreo,
+          adjuntos: adjuntosCorreo,
         });
 
         if (resultadoCorreo?.skipped) {
@@ -673,6 +705,7 @@ function Planeador() {
     setEventosPlaneador([]);
     setExcelDescargado(false);
     setPersonasInscritas([]);
+    setPlanoAprendicesData(null);
     setPdfDocumentosIdentidad(null);
     setPdfNombreDocumentos('');
     setAdjuntosCorreo([]);
@@ -691,8 +724,9 @@ function Planeador() {
     alert(`✅ Programación agregada correctamente${estadoCorreo ? `\n${estadoCorreo}` : ''}`);
   };
 
-  const handlePersonasChange = async (personas, personasConPDF = null) => {
+  const handlePersonasChange = async (personas, personasConPDF = null, planoMetadata = null) => {
     setPersonasInscritas(personas);
+    setPlanoAprendicesData(planoMetadata || null);
     
     // Si vienen con documentos, convertirlos/concatenarlos en orden al PDF final
     if (personasConPDF && personasConPDF.length > 0) {

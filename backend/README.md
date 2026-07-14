@@ -6,7 +6,7 @@ Backend Node.js/Express para envio de correos de alistamiento, alertas de vencim
 
 - `src/config/env.js`: carga y centraliza variables de entorno.
 - `src/lib/supabase.js`: cliente Supabase para consultas de datos.
-- `src/lib/mailer.js`: transporte SMTP (Gmail App Password recomendado).
+- `src/lib/mailer.js`: transporte SMTP con deteccion automatica (Outlook/Gmail) y fallback opcional.
 - `src/services/programacion.service.js`: consultas de programacion/instructor/programa.
 - `src/services/correo.service.js`: plantillas HTML y subjects.
 - `src/controllers/alistamiento.controller.js`: flujo HTTP de finalizar y alerta pendiente.
@@ -48,17 +48,30 @@ FRONTEND_ORIGIN=http://localhost:5173
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
-SMTP_HOST=smtp.gmail.com
+SMTP_PROVIDER=auto
+SMTP_HOST=
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER=tu_correo@gmail.com
-SMTP_PASS=tu_app_password_de_16_caracteres
-SMTP_FROM="Planeador SENA <tu_correo@gmail.com>"
+SMTP_USER=tu_cuenta_institucional@sena.edu.co
+SMTP_PASS=tu_password_o_app_password
+SMTP_FROM="Planeador SENA <tu_cuenta_institucional@sena.edu.co>"
+
+SMTP_FALLBACK_ENABLED=false
+SMTP_FALLBACK_PROVIDER=auto
+SMTP_FALLBACK_HOST=
+SMTP_FALLBACK_PORT=587
+SMTP_FALLBACK_SECURE=false
+SMTP_FALLBACK_USER=
+SMTP_FALLBACK_PASS=
+SMTP_FALLBACK_FROM=
 
 CRON_DAYS_BEFORE_DUE=3
 ```
 
-Nota: `SMTP_PASS` debe ser App Password de Gmail, no tu clave normal.
+Notas:
+- Para cuentas `@sena.edu.co`, `SMTP_PROVIDER=auto` usa Outlook (`smtp.office365.com`) automaticamente.
+- La configuracion se hace una sola vez en `.env`; no debes cambiarla por cada instructor.
+- Si usas Gmail, configura App Password.
 
 ## Endpoints
 

@@ -71,17 +71,21 @@ function MiniCarguePersonas({ onPersonasChange, isSubmitting = false }) {
     return resultado?.data?.text || '';
   };
 
-  const actualizarPersonas = (nuevasPersonas) => {
+  const actualizarPersonas = (nuevasPersonas, metadata = null) => {
     setPersonas(nuevasPersonas);
     if (onPersonasChange) {
-      onPersonasChange(nuevasPersonas.map(({ id, tipoIdentificacion, tipoIdentificacionLabel, numeroIdentificacion, tipoObligatorio, errorDocumento }) => ({
-        id,
-        tipoIdentificacion,
-        tipoIdentificacionLabel,
-        numeroIdentificacion,
-        tipoObligatorio,
-        errorDocumento,
-      })));
+      onPersonasChange(
+        nuevasPersonas.map(({ id, tipoIdentificacion, tipoIdentificacionLabel, numeroIdentificacion, tipoObligatorio, errorDocumento }) => ({
+          id,
+          tipoIdentificacion,
+          tipoIdentificacionLabel,
+          numeroIdentificacion,
+          tipoObligatorio,
+          errorDocumento,
+        })),
+        null,
+        metadata
+      );
     }
   };
 
@@ -122,6 +126,7 @@ function MiniCarguePersonas({ onPersonasChange, isSubmitting = false }) {
           );
 
           let inicio = primeraEsEncabezado ? 1 : 0;
+          const filasPlanoOriginal = datosLimpios.slice(inicio).map((fila) => ({ ...fila }));
           let colTipoID = null;
           let colNumID = null;
           let colTipoPoblacion = null;
@@ -147,22 +152,68 @@ function MiniCarguePersonas({ onPersonasChange, isSubmitting = false }) {
           const traducirTipoPoblacion = (valor) => {
             if (!valor) return '';
             const map = {
-              MUJER_CABEZA_DE_FAMILIA: 'Jefe(a) de hogar',
-              TERCERA_EDAD: 'Mayores de 60 años',
-              JOVENES_VULNERABLES: 'En situación de vulnerabilidad',
-              EMPRENDEDORES: 'Emprendedores',
-              VICTIMA_CONFLICTO: 'Víctima del conflicto armado',
-              DESPLAZADO: 'Desplazado(a)',
-              NINGUNO: 'Ninguno',
+              'MUJER CABEZA DE FAMILIA': 'Jefe(a) de hogar',
+              'MUJER CABEZA DE HOGAR': 'Jefe(a) de hogar',
+              'JEFE DE HOGAR': 'Jefe(a) de hogar',
+              'TERCERA EDAD': 'Mayores de 60 años',
+              'JOVENES VULNERABLES': 'En situación de vulnerabilidad',
+              'EMPRENDEDORES': 'Emprendedores',
+              'VICTIMA DEL CONFLICTO ARMADO': 'Víctima del conflicto armado',
+              'DESPLAZADO': 'Desplazado(a)',
+              'NINGUNO': 'Ninguno',
+              'DISCAPACITADOS': 'Discapacitados',
+              'VISUAL': 'Visual',
+              'AUDITIVA': 'Auditiva',
+              'INTELECTUAL': 'Intelectual',
+              'PSICOSOCIAL': 'Psicosocial',
+              'MULTIPLE': 'Múltiple',
+              'ASACRE': 'ASACRE',
+              'DESPOJO FORZADO DE TIERRAS': 'Despojo forzado de tierras',
+              'ACTOS TERRORISTA ATENTADOS COMBATES ENFRENTAMIENTOS HOSTIGAMIENTOS': 'Actos terrorista/atentados/combates/enfrentamientos/hostigamientos',
+              'ESVINCULADO DE GRUPOS ARMADOS ORGANIZ': 'Esvinculado de grupos armados organiz',
+              'EN CONFLICTO CON LA LEY PENAL': 'En conflicto con la ley penal',
+              'TRABAJADOR': 'Trabajador',
+              'POR FENOMENOS NATURALES CABEZA DE FAMILIA': 'Por fenómenos naturales / cabeza de familia',
+              'POR LA VIOLENCIA': 'Por la violencia',
+              'POR LA VIOLENCIA CABEZA DE FAMILIA': 'Por la violencia / cabeza de familia',
             };
-            const clean = String(valor).trim().toUpperCase();
-            return map[clean] || String(valor).trim();
+            const clean = String(valor)
+              .trim()
+              .replace(/_/g, ' ')
+              .replace(/\s+/g, ' ')
+              .replace(/[.,;:\-\/]/g, '')
+              .toUpperCase();
+
+            return map[clean] || '';
           };
 
-          const personasFormato = datosLimpios.slice(inicio).map((fila, idx) => {
+          const limpiarValorPlano = (valor) => String(valor ?? '').trim().replace(/[.,;:]/g, '').replace(/\s+/g, ' ');
+
+          const filasPlanoNormalizadas = filasPlanoOriginal.map((fila) => {
+            const filaLimpia = { ...fila };
+
+            if (colTipoID && filaLimpia[colTipoID] !== undefined) {
+              filaLimpia[colTipoID] = limpiarValorPlano(filaLimpia[colTipoID]).toUpperCase();
+            }
+
+            if (colNumID && filaLimpia[colNumID] !== undefined) {
+              filaLimpia[colNumID] = String(filaLimpia[colNumID] || '').replace(/\D/g, '');
+            }
+
+            if (colTipoPoblacion && filaLimpia[colTipoPoblacion] !== undefined) {
+              filaLimpia[colTipoPoblacion] = limpiarValorPlano(filaLimpia[colTipoPoblacion]);
+            }
+
+            return filaLimpia;
+          });
+
+          const personasFormato = filasPlanoNormalizadas.map((fila, idx) => {
             const tipoID = fila[colTipoID];
             const numID = fila[colNumID];
             const tipoPob = fila[colTipoPoblacion];
+            const tipoPobRaw = String(tipoPob || '').trim().replace(/_/g, ' ').replace(/\s+/g, ' ');
+            const tipoPobTraducido = traducirTipoPoblacion(tipoPob);
+            const tipoPobValido = Boolean(tipoPobTraducido);
 
             if (!tipoID && !numID) return null;
 
@@ -171,7 +222,9 @@ function MiniCarguePersonas({ onPersonasChange, isSubmitting = false }) {
               tipoIdentificacion: obtenerCodigoTipoIdentificacion(tipoID),
               tipoIdentificacionLabel: obtenerEtiquetaTipoIdentificacion(obtenerCodigoTipoIdentificacion(tipoID)),
               numeroIdentificacion: String(numID || '').replace(/[^0-9]/g, ''),
-              tipoObligatorio: normalizarTexto(traducirTipoPoblacion(tipoPob)),
+              tipoObligatorio: tipoPobValido ? tipoPobTraducido : tipoPobRaw,
+              tipoObligatorioValido: tipoPobValido,
+              tipoObligatorioOriginal: tipoPobRaw,
               errorDocumento: '',
               documento: null,
               documentoNombre: '',
@@ -186,7 +239,16 @@ function MiniCarguePersonas({ onPersonasChange, isSubmitting = false }) {
             return;
           }
 
-          actualizarPersonas(personasFormato);
+          actualizarPersonas(personasFormato, {
+            headers: keys,
+            filas: filasPlanoNormalizadas,
+            sheetName: workbook.SheetNames[0] || 'Hoja1',
+            columnas: {
+              tipoIdentificacion: colTipoID,
+              numeroIdentificacion: colNumID,
+              tipoPoblacion: colTipoPoblacion,
+            },
+          });
         } catch (err) {
           console.error('Error detallado:', err);
           alert('❌ Error al procesar el Excel: ' + err.message);
@@ -425,7 +487,12 @@ function MiniCarguePersonas({ onPersonasChange, isSubmitting = false }) {
                 >
                   <div className="mb-3">
                     <p className="text-sm font-semibold text-gray-800">{idx + 1}. {persona.numeroIdentificacion} - {persona.tipoIdentificacionLabel || persona.tipoIdentificacion}</p>
-                    <p className="text-xs text-gray-600">{persona.tipoObligatorio}</p>
+                    <p className="text-xs text-gray-600">
+                      {persona.tipoObligatorio || 'Tipo de población no reconocido'}
+                      {!persona.tipoObligatorioValido && persona.tipoObligatorioOriginal ? (
+                        <span className="text-red-600 font-semibold"> (Original: {persona.tipoObligatorioOriginal})</span>
+                      ) : null}
+                    </p>
                     {persona.documento && !persona.errorDocumento && (
                       <p className="text-xs text-green-700 font-semibold mt-1">
                         {persona.documentoConfirmado ? 'Documento validado y confirmado' : 'Coincidencia detectada, falta confirmación visual'}
